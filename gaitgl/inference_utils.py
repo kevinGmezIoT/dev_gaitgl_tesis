@@ -31,6 +31,8 @@ def embedding(model, seq_dir, frame_num, img_size, device="cuda"):
     clip = load_sequence(seq_dir, frame_num, img_size).to(device)
     with torch.no_grad():
         out = model(clip)
+        if isinstance(out, tuple):
+            out = out[0]
         n = out.size(0)
         emb = out.view(n,-1).mean(0)
     return emb.cpu().numpy()

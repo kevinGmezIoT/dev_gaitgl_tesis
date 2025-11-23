@@ -1,26 +1,24 @@
-import yaml, torch, matplotlib.pyplot as plt
+import yaml
+import argparse
+import torch
 from pathlib import Path
 from gaitgl.data_loader import load_data
-from gaitgl.model import Model
-
-def plot_curve(values, title, savepath):
-    plt.figure(figsize=(6,4))
-    plt.plot(values)
-    plt.title(title)
-    plt.xlabel("Iteraciones")
-    plt.ylabel("Valor")
-    plt.grid(True)
-    plt.savefig(savepath)
-    plt.close()
+from model.model import Model
 
 def main():
+    parser = argparse.ArgumentParser(description='Train GaitGL')
+    parser.add_argument('--config', default='config.yaml', type=str, help='Path to config file')
+    parser.add_argument('--resume_iter', default=0, type=int, help='Iteration to resume training from')
+    args = parser.parse_args()
 
-    conf = yaml.safe_load(open("config.yaml","r"))
-    work = Path(conf["work_dir"])
-    plots = Path(conf["plots_dir"])
-    work.mkdir(parents=True, exist_ok=True)
-    plots.mkdir(parents=True, exist_ok=True)
+    with open(args.config, 'r') as f:
+        conf = yaml.safe_load(f)
 
+    # Ensure directories exist
+    Path(conf["work_dir"]).mkdir(parents=True, exist_ok=True)
+    Path(conf["plots_dir"]).mkdir(parents=True, exist_ok=True)
+
+    print("Cargando datos...")
     train_src, test_src = load_data(
         conf["dataset_preprocessed"],
         conf["resolution"],
@@ -29,34 +27,29 @@ def main():
         conf["pid_shuffle"]
     )
 
-    P = conf["batch_P"]; K = conf["batch_K"]
+    restore_iter = args.resume_iter if args.resume_iter > 0 else conf["restore_iter"]
+
+    print("Inicializando modelo...")
     model = Model(
-        conf["hidden_dim"],
-        conf["margin"],
-        (P,K)
-    ).cuda()
+        hidden_dim=conf["hidden_dim"],
+        lr=conf["lr"],
+        hard_or_full_trip=conf["hard_or_full_trip"],
+        margin=conf["margin"],
+        num_workers=conf["num_workers"],
+        batch_size=(conf["batch_P"], conf["batch_K"]),
+        restore_iter=restore_iter,
+        total_iter=conf["total_iter"],
+        save_name=conf["save_name"],
+        train_pid_num=conf["train_pid_num"],
+        frame_num=conf["frame_num"],
+        model_name=conf["model_name"],
+        train_source=train_src,
+        test_source=test_src,
+        img_size=conf["resolution"] 
+    )
 
-    opt = torch.optim.Adam(model.parameters(), lr=conf["lr"])
-
-    loss_curve = []
-    for it in range(conf["total_iter"]):
-
-        batch, label = train_src.next_batch(P,K)
-        emb = model(batch.cuda())
-        loss = model.triplet_loss(emb, label.cuda())
-
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
-
-        loss_curve.append(loss.item())
-
-        if it % 1000 == 0:
-            print(f"[{it}] loss={loss.item():.4f}")
-
-    torch.save(model.encoder.state_dict(), work/"encoder.ptm")
-
-    plot_curve(loss_curve, "Training Loss", plots/"loss.png")
+    print("Comenzando entrenamiento...")
+    model.fit()
 
 if __name__ == "__main__":
     main()
