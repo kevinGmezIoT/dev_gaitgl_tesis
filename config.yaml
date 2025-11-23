@@ -17,8 +17,10 @@ batch_P: 8
 batch_K: 16
 margin: 0.2
 frame_num: 30
-total_iter: 80000
-num_workers: 4
+total_iter: 10000
+save_iter: 1000
+plot_iter: 1000
+num_workers: 1
 model_name: "GaitGL"
 hard_or_full_trip: "hard"
 restore_iter: 0

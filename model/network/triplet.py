@@ -38,8 +38,14 @@ class TripletLoss(nn.Module):
 
         full_loss_metric_mean = full_loss_metric_sum / full_loss_num
         full_loss_metric_mean[full_loss_num == 0] = 0
+        
+        # Accuracy: percentage of triplets where dist_pos < dist_neg
+        # full_hp_dist: [n, m, K-1, 1]
+        # full_hn_dist: [n, m, 1, (P-1)K]
+        accuracy = (full_hp_dist < full_hn_dist).float().mean()
+
         # print('mean_dist-',mean_dist)
-        return full_loss_metric_mean, hard_loss_metric_mean, mean_dist, full_loss_num
+        return full_loss_metric_mean, hard_loss_metric_mean, mean_dist, full_loss_num, accuracy
 
     def batch_dist(self, x):
         x2 = torch.sum(x ** 2, 2)

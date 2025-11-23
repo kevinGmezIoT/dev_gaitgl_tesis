@@ -20,6 +20,7 @@ from glob import glob
 from os.path import join
 
 import cv2
+import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 
 
@@ -39,7 +40,10 @@ class Model:
                  model_name,
                  train_source,
                  test_source,
-                 img_size=112):
+                 img_size=112,
+                 plots_dir='./runs/plots',
+                 save_iter=10000,
+                 plot_iter=10000):
 
         self.save_name = save_name
         self.train_pid_num = train_pid_num
@@ -58,24 +62,49 @@ class Model:
         self.restore_iter = restore_iter
         self.total_iter = total_iter
         self.img_size = img_size
+        self.plots_dir = plots_dir
+        self.save_iter = save_iter
+        self.plot_iter = plot_iter
+        
+        # Initialize history for plotting
+        self.history = {
+            'iter': [],
+            'hard_loss': [],
+            'full_loss': [],
+            'full_loss_num': [],
+            'hard_loss': [],
+            'full_loss': [],
+            'full_loss_num': [],
+            'mean_dist': [],
+            'accuracy': []
+        }
 
         print(train_pid_num)
         self.m_resnet = vgg_c3d.c3d_vgg_Fusion(num_classes=self.train_pid_num)
-        self.m_resnet = self.m_resnet.cuda()
-        print(torch.cuda.device_count(),batch_size)
-        self.m_resnet = nn.DataParallel(self.m_resnet, device_ids=list(range(torch.cuda.device_count())))
-        print(self.m_resnet)
+        print("CUDA available:", torch.cuda.is_available())
+        print("Device count:", torch.cuda.device_count())
+        
+        if torch.cuda.is_available():
+            self.m_resnet = self.m_resnet.cuda()
+            if torch.cuda.device_count() > 1:
+                self.m_resnet = nn.DataParallel(self.m_resnet)
+        else:
+            print("Running on CPU")
 
 
         self.triplet_loss = TripletLoss(self.P * self.M, self.hard_or_full_trip, self.margin).float()
-        self.triplet_loss = nn.DataParallel(self.triplet_loss)
-        self.triplet_loss.cuda()
+        if torch.cuda.is_available():
+            self.triplet_loss = nn.DataParallel(self.triplet_loss)
+            self.triplet_loss.cuda()
 
         self.hard_loss_metric = []
         self.full_loss_metric = []
         self.full_loss_num = []
         self.dist_list = []
+        self.full_loss_num = []
+        self.dist_list = []
         self.mean_dist = 0.01
+        self.accuracy_list = []
 
         self.optimizer = optim.Adam([
             {'params': self.m_resnet.parameters()}], lr=self.lr)
@@ -233,7 +262,7 @@ class Model:
             triplet_feature = triplet_feature.permute(2, 0, 1).contiguous()
             triplet_label = targets.unsqueeze(0)
             triplet_label = triplet_label.repeat(triplet_feature.size(0), 1)
-            (full_loss_metric, hard_loss_metric, mean_dist, full_loss_num
+            (full_loss_metric, hard_loss_metric, mean_dist, full_loss_num, accuracy
              ) = self.triplet_loss(triplet_feature, triplet_label)
 
 
@@ -246,16 +275,21 @@ class Model:
             self.hard_loss_metric.append(hard_loss_metric.mean().data.cpu().numpy())
             self.full_loss_metric.append(full_loss_metric.mean().data.cpu().numpy())
             self.full_loss_num.append(full_loss_num.mean().data.cpu().numpy())
+            self.full_loss_num.append(full_loss_num.mean().data.cpu().numpy())
             self.dist_list.append(mean_dist.mean().data.cpu().numpy())
+            self.accuracy_list.append(accuracy.mean().data.cpu().numpy())
 
             if loss > 1e-9:
                 loss.backward()
                 self.optimizer.step()
 
-            if self.restore_iter % 10000 == 0:
+            if self.restore_iter % self.save_iter == 0:
                 print(datetime.now() - _time1)
                 _time1 = datetime.now()
                 self.save()
+            
+            if self.restore_iter % self.plot_iter == 0:
+                self.plot_history()
             if self.restore_iter % 150000 == 0:
                 self.optimizer = optim.Adam([
                     {'params': self.m_resnet.parameters()}], lr=0.00001)  
@@ -267,6 +301,7 @@ class Model:
                 print(', full_loss_num={0:.8f}'.format(np.mean(self.full_loss_num)), end='')
                 self.mean_dist = np.mean(self.dist_list)
                 print(', mean_dist={0:.8f}'.format(self.mean_dist), end='')
+                print(', acc={0:.4f}'.format(np.mean(self.accuracy_list)), end='')
                 # print(', cse_loss_num={0:.8f}'.format(np.mean(self.losscse)), end='')
                 print(', lr=%f' % self.optimizer.param_groups[0]['lr'], end='')
                 print(', hard or full=%r' % self.hard_or_full_trip)
@@ -274,7 +309,18 @@ class Model:
                 self.hard_loss_metric = []
                 self.full_loss_metric = []
                 self.full_loss_num = []
+                self.full_loss_num = []
                 self.dist_list = []
+                self.accuracy_list = []
+                
+                # Update history
+                self.history['iter'].append(self.restore_iter)
+                self.history['hard_loss'].append(np.mean(self.hard_loss_metric))
+                self.history['full_loss'].append(np.mean(self.full_loss_metric))
+                self.history['full_loss_num'].append(np.mean(self.full_loss_num))
+                self.history['full_loss_num'].append(np.mean(self.full_loss_num))
+                self.history['mean_dist'].append(self.mean_dist)
+                self.history['accuracy'].append(np.mean(self.accuracy_list))
 
 
 
@@ -361,3 +407,42 @@ class Model:
             'checkpoint', self.model_name,
             '{}-{:0>5}-optimizer.ptm'.format(self.save_name, restore_iter))))
 
+
+
+    def plot_history(self):
+        # Create plots directory if it doesn't exist
+        os.makedirs(self.plots_dir, exist_ok=True)
+        
+        # Plot Loss
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.history['iter'], self.history['hard_loss'], label='Hard Loss')
+        plt.plot(self.history['iter'], self.history['full_loss'], label='Full Loss')
+        plt.xlabel('Iteration')
+        plt.ylabel('Loss')
+        plt.title('Training Loss')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(osp.join(self.plots_dir, 'loss.png'))
+        plt.close()
+
+        # Plot Mean Distance
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.history['iter'], self.history['mean_dist'], label='Mean Distance', color='orange')
+        plt.xlabel('Iteration')
+        plt.ylabel('Distance')
+        plt.title('Mean Distance')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(osp.join(self.plots_dir, 'distance.png'))
+        plt.close()
+
+        # Plot Accuracy
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.history['iter'], self.history['accuracy'], label='Accuracy', color='green')
+        plt.xlabel('Iteration')
+        plt.ylabel('Accuracy')
+        plt.title('Triplet Accuracy')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(osp.join(self.plots_dir, 'accuracy.png'))
+        plt.close()

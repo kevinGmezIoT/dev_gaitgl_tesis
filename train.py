@@ -45,7 +45,10 @@ def main():
         model_name=conf["model_name"],
         train_source=train_src,
         test_source=test_src,
-        img_size=conf["resolution"] 
+        img_size=conf["resolution"],
+        plots_dir=conf["plots_dir"],
+        save_iter=conf["save_iter"],
+        plot_iter=conf["plot_iter"]
     )
 
     print("Comenzando entrenamiento...")
