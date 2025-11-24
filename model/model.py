@@ -275,7 +275,6 @@ class Model:
             self.hard_loss_metric.append(hard_loss_metric.mean().data.cpu().numpy())
             self.full_loss_metric.append(full_loss_metric.mean().data.cpu().numpy())
             self.full_loss_num.append(full_loss_num.mean().data.cpu().numpy())
-            self.full_loss_num.append(full_loss_num.mean().data.cpu().numpy())
             self.dist_list.append(mean_dist.mean().data.cpu().numpy())
             self.accuracy_list.append(accuracy.mean().data.cpu().numpy())
 
@@ -306,21 +305,19 @@ class Model:
                 print(', lr=%f' % self.optimizer.param_groups[0]['lr'], end='')
                 print(', hard or full=%r' % self.hard_or_full_trip)
                 sys.stdout.flush()
-                self.hard_loss_metric = []
-                self.full_loss_metric = []
-                self.full_loss_num = []
-                self.full_loss_num = []
-                self.dist_list = []
-                self.accuracy_list = []
-                
                 # Update history
                 self.history['iter'].append(self.restore_iter)
                 self.history['hard_loss'].append(np.mean(self.hard_loss_metric))
                 self.history['full_loss'].append(np.mean(self.full_loss_metric))
                 self.history['full_loss_num'].append(np.mean(self.full_loss_num))
-                self.history['full_loss_num'].append(np.mean(self.full_loss_num))
                 self.history['mean_dist'].append(self.mean_dist)
                 self.history['accuracy'].append(np.mean(self.accuracy_list))
+
+                self.hard_loss_metric = []
+                self.full_loss_metric = []
+                self.full_loss_num = []
+                self.dist_list = []
+                self.accuracy_list = []
 
 
 

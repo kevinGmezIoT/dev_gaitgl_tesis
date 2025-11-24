@@ -2,7 +2,7 @@ import yaml
 import torch
 import argparse
 from pathlib import Path
-from gaitgl.model.network.vgg_c3d import c3d_vgg_Fusion
+from model.network.vgg_c3d import c3d_vgg_Fusion
 from gaitgl.inference_utils import embedding
 
 def main():
@@ -21,7 +21,16 @@ def main():
     if Path(ckpt_path).exists():
         print(f"Cargando checkpoint: {ckpt_path}")
         state = torch.load(ckpt_path, map_location="cpu")
-        model.load_state_dict(state)
+        
+        # Handle DataParallel module. prefix
+        new_state = {}
+        for k, v in state.items():
+            if k.startswith("module."):
+                new_state[k[7:]] = v
+            else:
+                new_state[k] = v
+        
+        model.load_state_dict(new_state)
     else:
         print(f"ADVERTENCIA: No se encontró checkpoint en {ckpt_path}. Usando pesos aleatorios.")
 
